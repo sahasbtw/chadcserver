@@ -17,7 +17,7 @@
 #define MAXBUFF		1024
 #define PORT		8000
 
-char *headers = "HTTP/1.1 200 OK\n\n";
+char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
 const char *http_methods[] = {"GET","HEAD","POST"};
 
 void
