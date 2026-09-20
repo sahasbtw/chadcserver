@@ -19,16 +19,6 @@
 
 char *headers = "HTTP/1.1 200 OK\n\n";
 const char *http_methods[] = {"GET","HEAD","POST"};
-enum HTTPMethods {
-	GET,
-	HEAD,
-	POST,
-};
-
-const char *http_status[][2] = { 
-	{"200","OK"}, 
-	{"404","NOT FOUND"}
-};
 
 void
 errhandling(char *dbugmsg)
@@ -68,8 +58,8 @@ int
 returnmethod(char *req)
 {
 	size_t i;
-	/* POST is the method with the longest name supported */
-	char *method = malloc(strlen(http_methods[POST]) + 1);
+	char *longest_method = (char *)(&http_methods + 1) - 1; /* Longest method is the last of the array */
+	char *method = malloc(strlen(longest_method) + 1);
 
 	for (i = 0; req[i] != ' '; i++)
 		method[i] = req[i];
@@ -91,7 +81,7 @@ main()
 
 	struct sockaddr_in serv_addr;
 	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(PORT);		     /* 8000 - uint16_t	    */
+	serv_addr.sin_port = htons(PORT);		     /* 8000 - uint16_t	     */
 	serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); /* 127.0.0.1 - uint32_t */
 
 	int yes = 1;
@@ -114,7 +104,7 @@ main()
 		char msgbuff[MAXBUFF];		/* for the receiving message */
 		ssize_t recv_data = recv(new_socket_fd, &msgbuff, sizeof(msgbuff), 0);
 
-		/* Sending a message */
+		/* Sending a message if its a GET request */
 		if (returnmethod(msgbuff)) {
 			char *response = craftresponse("www/index.html", headers); /* free this */
 
