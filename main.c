@@ -18,6 +18,7 @@
 #define PORT		8000
 
 char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
+char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
 const char *http_methods[] = {"GET","HEAD","POST"};
 
 void
@@ -31,7 +32,7 @@ errhandling(char *dbugmsg)
 	exit(errnum);				/* Exits with the same errno code */
 }
 
-
+/* Joins header str with content of a file */
 char
 *craftresponse(char *path, char *headers)
 {
@@ -57,7 +58,8 @@ char
 int
 returnmethod(char *req)
 {
-	size_t i;
+	size_t i = 0;
+	size_t method_index = 9; /* Some arbitrary number to just detect an unsupported method */
 	char *longest_method = (char *)(&http_methods + 1) - 1; /* Longest method is the last of the array */
 	char *method = malloc(strlen(longest_method) + 1);
 
@@ -67,10 +69,35 @@ returnmethod(char *req)
 
 	for (i = 0; i < countof(http_methods); i++)
 		if (strcmp(method, http_methods[i]) == 0)
-			printf("Its %s method\n", http_methods[i]);
+			method_index = i;
+	free(method);   /* Be sure to always free it*/
+	return method_index;
+}
 
-	free(method); /* Be sure to, always*/
-	return i;
+void
+send_get_response(int fd, char *headers, char *path)
+{
+	char *response = craftresponse(path, headers); /* free this */
+
+	if (send(fd, response, strlen(response), 0) < 0)
+		errhandling("FAILED: Sending GET response to client");
+
+	free(response); /* Freed it */
+}
+
+void
+send_head_response(int fd, char *headers)
+{
+	if (send(fd, headers, strlen(headers), 0) < 0)
+		errhandling("FAILED: Sending HEAD response to client");
+}
+
+
+void
+send_unknown_response(int fd, char *headers)
+{
+	if (send(fd, headers, strlen(headers), 0) < 0)
+		errhandling("FAILED: Sending 405 response to client");
 }
 
 int
@@ -105,13 +132,16 @@ main()
 		ssize_t recv_data = recv(new_socket_fd, &msgbuff, sizeof(msgbuff), 0);
 
 		/* Sending a message if its a GET request */
-		if (returnmethod(msgbuff)) {
-			char *response = craftresponse("www/index.html", headers); /* free this */
-
-			if (send(new_socket_fd, response, strlen(response), 0) < 0)
-				errhandling("Sending a message to client failed..!");
-
-			free(response); /* Freed it */
+		switch (returnmethod(msgbuff)) {
+			case 0:
+				send_get_response(new_socket_fd, headers, "www/index.html");
+				break;
+			case 1:
+				send_head_response(new_socket_fd, headers);
+				break;
+			default:
+				send_unknown_response(new_socket_fd, method_not_allowed);
+				break;
 		}
 
 		shutdown(new_socket_fd, SHUT_RDWR);
