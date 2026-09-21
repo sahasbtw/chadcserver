@@ -1,5 +1,13 @@
 #define _GNU_SOURCE		/* Needs to be the first line */
 
+/* 
+ * Source - https://stackoverflow.com/a/37241328 
+ * Posted by Vlad from Moscow, modified by community. See post 'Timeline' for change history
+ * Retrieved 2026-09-20, License - CC BY-SA 3.0 
+ *
+ * https://pythonexamples.org/c/how-to-check-if-string-ends-with-specific-suffix
+ *
+ */
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -13,10 +21,10 @@
 
 #define SERVERNAME "chadcserver"
 
-#define MAXCONN		3
-#define MAXBUFF		1024
-#define PORT		8000
+#define MAXCONN	3
+#define MAXBUFF	1024
 
+int port = 8000;
 char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
 char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
 const char *http_methods[] = {"GET","HEAD","POST"};
@@ -27,19 +35,19 @@ errhandling(char *dbugmsg)
 	int errnum = errno;			/* Making sure to get the errno right after */
 	const char *errname = strerrorname_np(errnum);
 	const char *errdesc = strerrordesc_np(errnum);
-	printf("ERROR : %s\n", dbugmsg);	/* Custom messages for ez debuging */
-	printf("        %d %s - %s\n", errnum, errname, errdesc);
+	printf("ERROR: %s\n", dbugmsg);	/* Custom messages for ez debuging */
+	printf("DESC :  %d %s - %s\n", errnum, errname, errdesc);
 	exit(errnum);				/* Exits with the same errno code */
 }
 
 /* Joins header str with content of a file */
 char
-*craftresponse(char *path, char *headers)
+*craftresp(char *path, char *headers)
 {
 	size_t h_len = strlen(headers);
 	FILE *fp; 
 	fp = fopen(path, "r");
-	if (fp == NULL) { errhandling("Can't open file to read..!"); }
+	if (fp == NULL) errhandling("Can't open file to read..!");
 
 	fseek(fp, 0, SEEK_END);
 	long eof = ftell(fp);
@@ -75,40 +83,78 @@ returnmethod(char *req)
 }
 
 void
-send_get_response(int fd, char *headers, char *path)
+getresp(int fd, char *headers, char *path)
 {
-	char *response = craftresponse(path, headers); /* free this */
+	char *resp = craftresp(path, headers); /* free this */
 
-	if (send(fd, response, strlen(response), 0) < 0)
-		errhandling("FAILED: Sending GET response to client");
+	if (send(fd, resp, strlen(resp), 0) < 0)
+		errhandling("FAILED: Sending GET resp to client");
 
-	free(response); /* Freed it */
+	free(resp); /* Freed it */
 }
 
 void
-send_head_response(int fd, char *headers)
+headresp(int fd, char *headers)
 {
 	if (send(fd, headers, strlen(headers), 0) < 0)
-		errhandling("FAILED: Sending HEAD response to client");
+		errhandling("FAILED: Sending HEAD resp to client");
 }
 
 
 void
-send_unknown_response(int fd, char *headers)
+unknownresp(int fd, char *headers)
 {
 	if (send(fd, headers, strlen(headers), 0) < 0)
-		errhandling("FAILED: Sending 405 response to client");
+		errhandling("FAILED: Sending 405 resp to client");
 }
 
 int
-main()
+main(int argc, char *argv[])
 {
+	char index_file[1024];
+	char index_filename[] = "index.html";
+
+	if (argc == 1) {
+		printf("USAGE: %s -d DIR -p PORT\n", argv[--argc]);
+		exit(1);
+	} else
+	{
+		for (int i = 1; i < argc; i++) {
+			if (strcmp(argv[i], "-d") == 0) {
+				if (++i < argc) {
+					FILE *fp; 
+					char dir_suffix[] = "/";
+					/*char index_file[sizeof(argv[i]) + sizeof(index_filename) + 1];  +1 for the forward slash */
+
+					strcpy(index_file, argv[i]);    
+					/* Check it the path provided has a forward slash at the end, if not add one */
+					char *suffix_provided = strstr(argv[i], dir_suffix);
+					if (suffix_provided == NULL && suffix_provided != argv[i] + strlen(argv[i]) - strlen(dir_suffix))
+						strcat(index_file, "/");
+					strcat(index_file, index_filename); 
+					/* Check it the path provided has a forward slash at the end, if not add one */
+					fp = fopen(index_file, "r");
+					if (fp == NULL) errhandling("Can't open file to read..!");
+				} else {
+					printf("ERROR: No directory given after -d\n");
+					exit(1);
+				}
+			} else if (strcmp(argv[i], "-p") == 0) {
+				if (++i < argc) port = atoi(argv[i]);
+				else {
+					printf("ERROR: empty port number after -p\n");
+					exit(1);
+				}
+			}
+		}
+	}
+
 	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (socket_fd < 0) errhandling("Initialising socket failed..!");
 
 	struct sockaddr_in serv_addr;
 	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(PORT);		     /* 8000 - uint16_t	     */
+	serv_addr.sin_port = htons(port);                    /*  8000 - uint16_t    */
 	serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); /* 127.0.0.1 - uint32_t */
 
 	int yes = 1;
@@ -119,6 +165,10 @@ main()
 	if (bind(socket_fd, &serv_addr, socket_len) < 0)
 		errhandling("Binding failed..!");
 
+	printf("============\n%s\n============\n", SERVERNAME);
+	printf("Hosting directory : %s\n", index_file);
+	printf("PORT : %d\n\n", port);
+
 	while (1) {
 		if (listen(socket_fd, MAXCONN) < 0)
 			errhandling("Listening failed..!");
@@ -128,28 +178,27 @@ main()
 		if (new_socket_fd < 0) errhandling("Creating a new socket failed..!");
 
 		/* Receiving a message */ 
-		char msgbuff[MAXBUFF];		/* for the receiving message */
-		ssize_t recv_data = recv(new_socket_fd, &msgbuff, sizeof(msgbuff), 0);
+		char msg_buff[MAXBUFF];		/* for the receiving message */
+		ssize_t recv_data = recv(new_socket_fd, &msg_buff, sizeof(msg_buff), 0);
 
 		/* Sending a message if its a GET request */
-		switch (returnmethod(msgbuff)) {
+		switch (returnmethod(msg_buff)) {
 			case 0:
-				send_get_response(new_socket_fd, headers, "www/index.html");
+				getresp(new_socket_fd, headers, index_file);
 				break;
 			case 1:
-				send_head_response(new_socket_fd, headers);
+				headresp(new_socket_fd, headers);
 				break;
 			default:
-				send_unknown_response(new_socket_fd, method_not_allowed);
+				unknownresp(new_socket_fd, method_not_allowed);
 				break;
 		}
 
 		shutdown(new_socket_fd, SHUT_RDWR);
-		printf("Content Received = %zd \n", recv_data);
-		printf("Response ::\n%s \n", msgbuff);
+		printf("Content Received = %zd \n%s", recv_data, msg_buff);
 
 		/* Clean the array of received data length */
-		memset(msgbuff, '\0', recv_data);
+		memset(msg_buff, '\0', recv_data);
 	}
 
 	if (shutdown(socket_fd, SHUT_RDWR) < 0) errhandling("Couldn't close the socket");
