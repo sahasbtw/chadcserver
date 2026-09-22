@@ -9,6 +9,6 @@ from a hard coded path for now.
 ### TODO
 
 - [ ] Tidy up the code and come up with better variable and function names.
-- [ ] Implement argument parsing to choose a custom path and a port to serve.
+- [X] Implement argument parsing to choose a custom path and a port to serve.
 - [ ] Parse requests and respond with client's `User-Agent`.
 - [ ] Implement host based routing.
