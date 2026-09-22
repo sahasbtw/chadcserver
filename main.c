@@ -1,6 +1,8 @@
 #define _GNU_SOURCE		/* Needs to be the first line */
 
 /* 
+ * Resources:
+ *
  * Source - https://stackoverflow.com/a/37241328 
  * Posted by Vlad from Moscow, modified by community. See post 'Timeline' for change history
  * Retrieved 2026-09-20, License - CC BY-SA 3.0 
@@ -8,6 +10,7 @@
  * https://pythonexamples.org/c/how-to-check-if-string-ends-with-specific-suffix
  *
  */
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -28,6 +31,7 @@ int port = 8000;
 char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
 char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
 const char *http_methods[] = {"GET","HEAD","POST"};
+const char log_separator = '='; 
 
 void
 errhandling(char *dbugmsg)
@@ -111,7 +115,7 @@ unknownresp(int fd, char *headers)
 int
 main(int argc, char *argv[])
 {
-	char index_file[1024];
+	char index_file[128];
 	char index_filename[] = "index.html";
 
 	if (argc == 1) {
@@ -124,8 +128,6 @@ main(int argc, char *argv[])
 				if (++i < argc) {
 					FILE *fp; 
 					char dir_suffix[] = "/";
-					/*char index_file[sizeof(argv[i]) + sizeof(index_filename) + 1];  +1 for the forward slash */
-
 					strcpy(index_file, argv[i]);    
 					/* Check it the path provided has a forward slash at the end, if not add one */
 					char *suffix_provided = strstr(argv[i], dir_suffix);
@@ -169,19 +171,16 @@ main(int argc, char *argv[])
 	printf("Hosting directory : %s\n", index_file);
 	printf("PORT : %d\n\n", port);
 
-	while (1) {
-		if (listen(socket_fd, MAXCONN) < 0)
-			errhandling("Listening failed..!");
-
+	while (listen(socket_fd, MAXCONN) == 0) {
 		/* Setting up a new socket fd to receive and send data */
 		int new_socket_fd = accept(socket_fd, &serv_addr, &socket_len);
 		if (new_socket_fd < 0) errhandling("Creating a new socket failed..!");
 
 		/* Receiving a message */ 
-		char msg_buff[MAXBUFF];		/* for the receiving message */
-		ssize_t recv_data = recv(new_socket_fd, &msg_buff, sizeof(msg_buff), 0);
+		char msg_buff[MAXBUFF];
+		ssize_t recvd_data = recv(new_socket_fd, &msg_buff, sizeof(msg_buff), 0);
 
-		/* Sending a message if its a GET request */
+		/* Sending a message depending on the request type */
 		switch (returnmethod(msg_buff)) {
 			case 0:
 				getresp(new_socket_fd, headers, index_file);
@@ -195,12 +194,16 @@ main(int argc, char *argv[])
 		}
 
 		shutdown(new_socket_fd, SHUT_RDWR);
-		printf("Content Received = %zd \n%s", recv_data, msg_buff);
+		printf("Content Received : %zd \n%s\n", recvd_data, msg_buff);
+		for (int i = 0; i < 50; i++)
+			printf("%c", log_separator);
+		printf("\n");
 
 		/* Clean the array of received data length */
-		memset(msg_buff, '\0', recv_data);
+		memset(msg_buff, '\0', recvd_data);
 	}
 
+	errhandling("Listening failed..!");
 	if (shutdown(socket_fd, SHUT_RDWR) < 0) errhandling("Couldn't close the socket");
 	return 0;
 }
