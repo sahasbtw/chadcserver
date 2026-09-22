@@ -112,36 +112,36 @@ unknownresp(int fd, char *headers)
 		errhandling("FAILED: Sending 405 resp to client");
 }
 
-int
-main(int argc, char *argv[])
+void
+arghandling(int argc, char *argv[], char *file, char *filename)
 {
-	char index_file[128];
-	char index_filename[] = "index.html";
-
 	if (argc == 1) {
 		printf("USAGE: %s -d DIR -p PORT\n", argv[--argc]);
 		exit(1);
-	} else
-	{
+	} else {
 		for (int i = 1; i < argc; i++) {
-			if (strcmp(argv[i], "-d") == 0) {
+			if (strcmp(argv[i], "-d") == 0) {           /* Checking mandatory directory path */
 				if (++i < argc) {
 					FILE *fp; 
-					char dir_suffix[] = "/";
-					strcpy(index_file, argv[i]);    
-					/* Check it the path provided has a forward slash at the end, if not add one */
-					char *suffix_provided = strstr(argv[i], dir_suffix);
-					if (suffix_provided == NULL && suffix_provided != argv[i] + strlen(argv[i]) - strlen(dir_suffix))
-						strcat(index_file, "/");
-					strcat(index_file, index_filename); 
-					/* Check it the path provided has a forward slash at the end, if not add one */
-					fp = fopen(index_file, "r");
+					char path_sprtr[] = "/";
+
+					strcpy(file, argv[i]);
+
+					/* Add one if arg dosen't end with a forward slash */
+					char *sprtr_ptr = strstr(argv[i], path_sprtr); 
+					if (sprtr_ptr == NULL && sprtr_ptr != argv[i] + strlen(argv[i]) - strlen(path_sprtr))
+						strcat(file, "/");
+
+					strcat(file, filename); 
+
+					fp = fopen(file, "r");
 					if (fp == NULL) errhandling("Can't open file to read..!");
+
 				} else {
 					printf("ERROR: No directory given after -d\n");
 					exit(1);
 				}
-			} else if (strcmp(argv[i], "-p") == 0) {
+			} else if (strcmp(argv[i], "-p") == 0) {    /* Checking port if given, defaults to 8000 if not */
 				if (++i < argc) port = atoi(argv[i]);
 				else {
 					printf("ERROR: empty port number after -p\n");
@@ -150,6 +150,16 @@ main(int argc, char *argv[])
 			}
 		}
 	}
+
+}
+
+int
+main(int argc, char *argv[])
+{
+	char index_file[128];
+	char index_filename[] = "index.html";
+
+	arghandling(argc, argv, index_file, index_filename);
 
 	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (socket_fd < 0) errhandling("Initialising socket failed..!");
@@ -204,6 +214,8 @@ main(int argc, char *argv[])
 	}
 
 	errhandling("Listening failed..!");
+
 	if (shutdown(socket_fd, SHUT_RDWR) < 0) errhandling("Couldn't close the socket");
+
 	return 0;
 }
