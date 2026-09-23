@@ -28,9 +28,14 @@
 #define MAXBUFF	1024
 
 int port = 8000;
+
+/* TODO : Fix this crap */
 char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
 char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
+
+/* Longest method name should be the last of the array */
 const char *http_methods[] = {"GET","HEAD","POST"};
+
 const char log_separator = '='; 
 
 void
@@ -51,7 +56,8 @@ char
 	size_t h_len = strlen(headers);
 	FILE *fp; 
 	fp = fopen(path, "r");
-	if (fp == NULL) errhandling("Can't open file to read..!");
+	if (fp == NULL)
+		errhandling("Can't open file to read..!");
 
 	fseek(fp, 0, SEEK_END);
 	long eof = ftell(fp);
@@ -71,8 +77,9 @@ int
 returnmethod(char *req)
 {
 	size_t i = 0;
-	size_t method_index = 9; /* Some arbitrary number to just detect an unsupported method */
-	char *longest_method = (char *)(&http_methods + 1) - 1; /* Longest method is the last of the array */
+ /* Some arbitrary number; i.e 9, to just detect an unsupported method */
+	size_t method_index = 9;
+	char *longest_method = (char *)(&http_methods + 1) - 1;
 	char *method = malloc(strlen(longest_method) + 1);
 
 	for (i = 0; req[i] != ' '; i++)
@@ -120,7 +127,8 @@ arghandling(int argc, char *argv[], char *file, char *filename)
 		exit(1);
 	} else {
 		for (int i = 1; i < argc; i++) {
-			if (strcmp(argv[i], "-d") == 0) {           /* Checking mandatory directory path */
+			/* Checking mandatory directory path */
+			if (strcmp(argv[i], "-d") == 0) { 
 				if (++i < argc) {
 					FILE *fp; 
 					char path_sprtr[] = "/";
@@ -129,11 +137,13 @@ arghandling(int argc, char *argv[], char *file, char *filename)
 
 					/* Add one if arg dosen't end with a forward slash */
 					char *sprtr_ptr = strstr(argv[i], path_sprtr); 
-					if (sprtr_ptr == NULL && sprtr_ptr != argv[i] + strlen(argv[i]) - strlen(path_sprtr))
-						strcat(file, "/");
+					if (sprtr_ptr == NULL
+						&& sprtr_ptr != argv[i] + strlen(argv[i]) - strlen(path_sprtr))
+					{ strcat(file, "/"); }
 
 					strcat(file, filename); 
 
+					/* See if index.html exists in the path */
 					fp = fopen(file, "r");
 					if (fp == NULL) errhandling("Can't open file to read..!");
 
@@ -141,8 +151,12 @@ arghandling(int argc, char *argv[], char *file, char *filename)
 					printf("ERROR: No directory given after -d\n");
 					exit(1);
 				}
-			} else if (strcmp(argv[i], "-p") == 0) {    /* Checking port if given, defaults to 8000 if not */
-				if (++i < argc) port = atoi(argv[i]);
+
+			/* Checking port if given, defaults to 8000 if not */
+			} else if (strcmp(argv[i], "-p") == 0)
+			{
+				if (++i < argc)
+					port = atoi(argv[i]);
 				else {
 					printf("ERROR: empty port number after -p\n");
 					exit(1);
@@ -162,13 +176,15 @@ main(int argc, char *argv[])
 	arghandling(argc, argv, index_file, index_filename);
 
 	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (socket_fd < 0) errhandling("Initialising socket failed..!");
+	if (socket_fd < 0)
+		errhandling("Initialising socket failed..!");
 
 	struct sockaddr_in serv_addr;
 	serv_addr.sin_family = AF_INET;
 	serv_addr.sin_port = htons(port);                    /*  8000 - uint16_t    */
 	serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); /* 127.0.0.1 - uint32_t */
 
+	/* Eliminate Address already in use error */
 	int yes = 1;
 	if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (void*)&yes, sizeof(yes)) < 0)
 		errhandling("Failed at setting options..!");
@@ -184,13 +200,14 @@ main(int argc, char *argv[])
 	while (listen(socket_fd, MAXCONN) == 0) {
 		/* Setting up a new socket fd to receive and send data */
 		int new_socket_fd = accept(socket_fd, &serv_addr, &socket_len);
-		if (new_socket_fd < 0) errhandling("Creating a new socket failed..!");
+		if (new_socket_fd < 0)
+			errhandling("Creating a new socket failed..!");
 
 		/* Receiving a message */ 
 		char msg_buff[MAXBUFF];
 		ssize_t recvd_data = recv(new_socket_fd, &msg_buff, sizeof(msg_buff), 0);
 
-		/* Sending a message depending on the request type */
+		/* Responding depending on the request type */
 		switch (returnmethod(msg_buff)) {
 			case 0:
 				getresp(new_socket_fd, headers, index_file);
@@ -215,7 +232,8 @@ main(int argc, char *argv[])
 
 	errhandling("Listening failed..!");
 
-	if (shutdown(socket_fd, SHUT_RDWR) < 0) errhandling("Couldn't close the socket");
+	if (shutdown(socket_fd, SHUT_RDWR) < 0)
+		errhandling("Couldn't close the socket");
 
 	return 0;
 }
