@@ -38,15 +38,14 @@ const char *http_methods[] = {"GET","HEAD","POST"};
 
 const char log_separator = '='; 
 
-void
-errhandling(char *dbugmsg)
+int isint(const char *s)
 {
-	int errnum = errno;			/* Making sure to get the errno right after */
-	const char *errname = strerrorname_np(errnum);
-	const char *errdesc = strerrordesc_np(errnum);
-	printf("ERROR: %s\n", dbugmsg);	/* Custom messages for ez debuging */
-	printf("DESC :  %d %s - %s\n", errnum, errname, errdesc);
-	exit(errnum);				/* Exits with the same errno code */
+	while (*s) {
+		char c = *s++;
+		if ( ((c) >= 'a' && (c) <= 'f') || ((c) >= 'A' && (c) <= 'F') )
+			return 1;
+	}
+	return 0;
 }
 
 /* Joins header str with content of a file */
@@ -57,7 +56,7 @@ char
 	FILE *fp; 
 	fp = fopen(path, "r");
 	if (fp == NULL)
-		errhandling("Can't open file to read..!");
+		errnomsg("Can't open file to read..!");
 
 	fseek(fp, 0, SEEK_END);
 	long eof = ftell(fp);
@@ -99,7 +98,7 @@ getresp(int fd, char *headers, char *path)
 	char *resp = craftresp(path, headers); /* free this */
 
 	if (send(fd, resp, strlen(resp), 0) < 0)
-		errhandling("FAILED: Sending GET resp to client");
+		errnomsg("FAILED: Sending GET resp to client");
 
 	free(resp); /* Freed it */
 }
@@ -108,7 +107,7 @@ void
 headresp(int fd, char *headers)
 {
 	if (send(fd, headers, strlen(headers), 0) < 0)
-		errhandling("FAILED: Sending HEAD resp to client");
+		errnomsg("FAILED: Sending HEAD resp to client");
 }
 
 
@@ -116,7 +115,7 @@ void
 unknownresp(int fd, char *headers)
 {
 	if (send(fd, headers, strlen(headers), 0) < 0)
-		errhandling("FAILED: Sending 405 resp to client");
+		errnomsg("FAILED: Sending 405 resp to client");
 }
 
 void
@@ -145,7 +144,7 @@ arghandling(int argc, char *argv[], char *file, char *filename)
 
 					/* See if index.html exists in the path */
 					fp = fopen(file, "r");
-					if (fp == NULL) errhandling("Can't open file to read..!");
+					if (fp == NULL) errnomsg("Can't open file to read..!");
 
 				} else {
 					printf("ERROR: No directory given after -d\n");
@@ -156,7 +155,8 @@ arghandling(int argc, char *argv[], char *file, char *filename)
 			} else if (strcmp(argv[i], "-p") == 0)
 			{
 				if (++i < argc)
-					port = atoi(argv[i]);
+					if (isint(argv[i]) == 1)
+						customerrmsg(69, "Invalid Posrt Number", "The port should only contain digits");
 				else {
 					printf("ERROR: empty port number after -p\n");
 					exit(1);
@@ -165,6 +165,26 @@ arghandling(int argc, char *argv[], char *file, char *filename)
 		}
 	}
 
+}
+
+/* Error Handling Functions */
+void
+errnomsg(char *dbugmsg)
+{
+	int errnum = errno;			/* Making sure to get the errno right after */
+	const char *errname = strerrorname_np(errnum);
+	const char *errdesc = strerrordesc_np(errnum);
+	printf("ERROR: %s\n", dbugmsg);	/* Custom messages for ez debuging */
+	printf("DESC :  %d %s - %s\n", errnum, errname, errdesc);
+	exit(errnum);				/* Exits with the same errno code */
+}
+
+void
+customerrmsg(int exitno, char *dbugtitle, char *dbugdesc)
+{
+	printf("ERROR: %s\n", dbugmsg);	/* Custom messages for ez debuging */
+	printf("DESC :  %d %s - %s\n", errnum, errname, errdesc);
+	exit(exitno);				/* Exits with the 1 */
 }
 
 int
@@ -177,7 +197,7 @@ main(int argc, char *argv[])
 
 	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (socket_fd < 0)
-		errhandling("Initialising socket failed..!");
+		errnomsg("Initialising socket failed..!");
 
 	struct sockaddr_in serv_addr;
 	serv_addr.sin_family = AF_INET;
@@ -187,11 +207,11 @@ main(int argc, char *argv[])
 	/* Eliminate Address already in use error */
 	int yes = 1;
 	if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (void*)&yes, sizeof(yes)) < 0)
-		errhandling("Failed at setting options..!");
+		errnomsg("Failed at setting options..!");
 
 	socklen_t socket_len = sizeof(serv_addr);
 	if (bind(socket_fd, &serv_addr, socket_len) < 0)
-		errhandling("Binding failed..!");
+		errnomsg("Binding failed..!");
 
 	printf("============\n%s\n============\n", SERVERNAME);
 	printf("Hosting directory : %s\n", index_file);
@@ -201,7 +221,7 @@ main(int argc, char *argv[])
 		/* Setting up a new socket fd to receive and send data */
 		int new_socket_fd = accept(socket_fd, &serv_addr, &socket_len);
 		if (new_socket_fd < 0)
-			errhandling("Creating a new socket failed..!");
+			errnomsg("Creating a new socket failed..!");
 
 		/* Receiving a message */ 
 		char msg_buff[MAXBUFF];
@@ -230,10 +250,10 @@ main(int argc, char *argv[])
 		memset(msg_buff, '\0', recvd_data);
 	}
 
-	errhandling("Listening failed..!");
+	errnomsg("Listening failed..!");
 
 	if (shutdown(socket_fd, SHUT_RDWR) < 0)
-		errhandling("Couldn't close the socket");
+		errnomsg("Couldn't close the socket");
 
 	return 0;
 }
