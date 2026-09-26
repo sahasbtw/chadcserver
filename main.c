@@ -42,15 +42,33 @@ int isint(const char *s)
 {
 	while (*s) {
 		char c = *s++;
-		if ( ((c) >= 'a' && (c) <= 'f') || ((c) >= 'A' && (c) <= 'F') )
+		if (((c) >= 'a' && (c) <= 'f') || ((c) >= 'A' && (c) <= 'F'))
 			return 1;
 	}
 	return 0;
 }
 
+
+/* Error Handling Functions */
+void errnomsg(char *dbugmsg)
+{
+	int errnum = errno;			/* Making sure to get the errno right after */
+	const char *errname = strerrorname_np(errnum);
+	const char *errdesc = strerrordesc_np(errnum);
+	printf("ERROR: %s\n", dbugmsg);	/* Custom messages for ez debuging */
+	printf("DESC :  %d %s - %s\n", errnum, errname, errdesc);
+	exit(errnum);				/* Exits with the same errno code */
+}
+
+void customerrmsg(int exitno, char *errtitle, char *errdesc)
+{
+	printf("ERROR: %s\n", errtitle);	/* Custom messages for ez debuging */
+	printf("DESC :  %d %s - %s\n", exitno, errtitle, errdesc);
+	exit(exitno);				/* Exits with the 1 */
+}
+
 /* Joins header str with content of a file */
-char
-*craftresp(char *path, char *headers)
+char *craftresp(char *path, char *headers)
 {
 	size_t h_len = strlen(headers);
 	FILE *fp; 
@@ -72,11 +90,10 @@ char
 	return buff;
 }
 
-int
-returnmethod(char *req)
+int returnmethod(char *req)
 {
 	size_t i = 0;
- /* Some arbitrary number; i.e 9, to just detect an unsupported method */
+	/* Some arbitrary number; i.e 9, to just detect an unsupported method */
 	size_t method_index = 9;
 	char *longest_method = (char *)(&http_methods + 1) - 1;
 	char *method = malloc(strlen(longest_method) + 1);
@@ -92,8 +109,7 @@ returnmethod(char *req)
 	return method_index;
 }
 
-void
-getresp(int fd, char *headers, char *path)
+void getresp(int fd, char *headers, char *path)
 {
 	char *resp = craftresp(path, headers); /* free this */
 
@@ -103,23 +119,20 @@ getresp(int fd, char *headers, char *path)
 	free(resp); /* Freed it */
 }
 
-void
-headresp(int fd, char *headers)
+void headresp(int fd, char *headers)
 {
 	if (send(fd, headers, strlen(headers), 0) < 0)
 		errnomsg("FAILED: Sending HEAD resp to client");
 }
 
 
-void
-unknownresp(int fd, char *headers)
+void unknownresp(int fd, char *headers)
 {
 	if (send(fd, headers, strlen(headers), 0) < 0)
 		errnomsg("FAILED: Sending 405 resp to client");
 }
 
-void
-arghandling(int argc, char *argv[], char *file, char *filename)
+void arghandling(int argc, char *argv[], char *file, char *filename)
 {
 	if (argc == 1) {
 		printf("USAGE: %s -d DIR -p PORT\n", argv[--argc]);
@@ -137,58 +150,37 @@ arghandling(int argc, char *argv[], char *file, char *filename)
 					/* Add one if arg dosen't end with a forward slash */
 					char *sprtr_ptr = strstr(argv[i], path_sprtr); 
 					if (sprtr_ptr == NULL
-						&& sprtr_ptr != argv[i] + strlen(argv[i]) - strlen(path_sprtr))
-					{ strcat(file, "/"); }
+							&& sprtr_ptr != argv[i] + strlen(argv[i]) - strlen(path_sprtr))
+						strcat(file, "/");
 
 					strcat(file, filename); 
 
 					/* See if index.html exists in the path */
 					fp = fopen(file, "r");
-					if (fp == NULL) errnomsg("Can't open file to read..!");
-
-				} else {
-					printf("ERROR: No directory given after -d\n");
-					exit(1);
-				}
+					if (fp == NULL)
+						errnomsg("Can't open file to read..!");
+				} else customerrmsg(1, "Invalid Directory Name",
+						"Empty directory after option -d");
 
 			/* Checking port if given, defaults to 8000 if not */
 			} else if (strcmp(argv[i], "-p") == 0)
 			{
-				if (++i < argc)
+				if (++i < argc) {
 					if (isint(argv[i]) == 1)
-						customerrmsg(69, "Invalid Posrt Number", "The port should only contain digits");
-				else {
-					printf("ERROR: empty port number after -p\n");
-					exit(1);
-				}
+						customerrmsg(69, 
+								"Invalid Port Number",
+								"The port should only contain digits");
+					else port = atoi(argv[i]);
+				} else customerrmsg(1,
+						"Invalid Port Number",
+						"Empty port number after option -p");
 			}
 		}
 	}
 
 }
 
-/* Error Handling Functions */
-void
-errnomsg(char *dbugmsg)
-{
-	int errnum = errno;			/* Making sure to get the errno right after */
-	const char *errname = strerrorname_np(errnum);
-	const char *errdesc = strerrordesc_np(errnum);
-	printf("ERROR: %s\n", dbugmsg);	/* Custom messages for ez debuging */
-	printf("DESC :  %d %s - %s\n", errnum, errname, errdesc);
-	exit(errnum);				/* Exits with the same errno code */
-}
-
-void
-customerrmsg(int exitno, char *dbugtitle, char *dbugdesc)
-{
-	printf("ERROR: %s\n", dbugmsg);	/* Custom messages for ez debuging */
-	printf("DESC :  %d %s - %s\n", errnum, errname, errdesc);
-	exit(exitno);				/* Exits with the 1 */
-}
-
-int
-main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 	char index_file[128];
 	char index_filename[] = "index.html";
