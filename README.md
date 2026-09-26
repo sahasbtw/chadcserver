@@ -3,8 +3,7 @@
 Genuine attempt to learn c by writing a minimal http server, mostly by looking
 through Man pages, almost no stackoverflow & absolutely No AI.
 
-Still in very early stages as the server can only serve an `index.html` file
-from a hard coded path for now.
+Still in very early stages as the server can only serve an `index.html` file.
 
 ### TODO
 
