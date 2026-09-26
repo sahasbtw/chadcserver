@@ -1,9 +1,10 @@
-CC=gcc --std=c99
+CC = gcc --std=c99
+CFLAGS = -Wall -Wextra
 
-CFLAGS=-Wall -Wextra
+EXECUTABLE = chadcserver
 
-SERVERNAME=chadcserver
+main: main.c
+	$(CC) $(CFLAGS) main.c -o $(EXECUTABLE)
 
-http_server: main.c
-	$(CC) $(CFLAGS) main.c -o $(SERVERNAME)
-
+clean:
+	rm -f ${EXECUTABLE}
