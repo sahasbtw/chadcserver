@@ -29,31 +29,19 @@
 #define MAXCONN	3
 #define MAXBUFF	1024
 
-const char *current_path = ".";
 /* Longest method name should be the last of the array */
 const char *http_methods[] = {"GET","HEAD","POST"};
-const char log_separator = '='; 
+const char log_separator = '-'; 
 
 int port = 8000;
-int default_index = 1;
 
 /* TODO : Fix this crap */
 char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
 char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
-char host_path[128];
+
+char host_path[128] = ".";
 char index_file[128];
 char index_filename[] = "index.html";
-
-/* Check if a string is a digit */
-int isint(const char *s)
-{
-	while (*s) {
-		char c = *s++;
-		if (((c) >= 'a' && (c) <= 'f') || ((c) >= 'A' && (c) <= 'F'))
-			return 1;
-	}
-	return 0;
-}
 
 /* Perror with exit */
 void perrexit(char *dbugmsg)
@@ -125,6 +113,17 @@ int returnmethod(char *req)
 	return method_index;
 }
 
+/* Check if a string is a digit */
+int isint(const char *s)
+{
+	while (*s) {
+		char c = *s++;
+		if (((c) >= 'a' && (c) <= 'f') || ((c) >= 'A' && (c) <= 'F'))
+			return 1;
+	}
+	return 0;
+}
+
 int validdir(const char *dirname)
 {
 	DIR *dirp = opendir(dirname);
@@ -178,6 +177,19 @@ void unknownresp(int fd, char *headers)
 		perrexit("FAILED: Sending 405 resp to client");
 }
 
+void craftpath(char *file, char *dir, char *filename)
+{
+	for (size_t i = 0; i < strlen(dir); i++)
+		if (dir[i] == '/' && dir[i+1] == '\0') {
+			strcpy(file, dir);
+			strcat(file, filename);
+		} else {
+			strcpy(file, dir);
+			strcat(file, "/");
+			strcat(file, filename);
+		}
+}
+
 void arghandling(int argc, char *argv[])
 {
 	if (argc > 1) {
@@ -193,9 +205,9 @@ void arghandling(int argc, char *argv[])
 					else {
 						memset(host_path, 0, sizeof(host_path));
 						strcpy(host_path, argv[i]);
-						default_index = 0;
 					}
-				} else usrerrexit("Invalid Directory Name");
+				} else
+					usrerrexit("Invalid Directory Name");
 
 			/* Checking port if given, defaults to 8000 if not */
 			} else if (strcmp(argv[i], "-p") == 0)
@@ -205,7 +217,8 @@ void arghandling(int argc, char *argv[])
 						usrerrexit("Invalid Port Number");
 					else 
 						port = atoi(argv[i]);
-				} else usrerrexit("Invalid Port Number");
+				} else
+					usrerrexit("Invalid Port Number");
 			}
 		}
 	}
@@ -214,21 +227,15 @@ void arghandling(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
-	strcpy(host_path, current_path);
 	arghandling(argc, argv);
 
 	if (fileindir(host_path, index_filename) == 0) {
-		for (size_t i = 0; i < strlen(host_path) ; i++)
-			if (host_path[i] == '/' && host_path[i+1] == '\0') {
-				strcpy(index_file, host_path);
-				strcat(index_file, index_filename);
-			} else {
-				strcpy(index_file, host_path);
-				strcat(index_file, "/");
-				strcat(index_file, index_filename);
-			}
-	} else
-		printf("No index file detected, using default %s landing page\n", SERVERNAME);
+		craftpath(index_file, host_path, index_filename);
+	} else {
+		/* If no index.html file is present, www/index.html will be serverd */
+		printf("Using default %s landing page at www/index.html\n", SERVERNAME);
+		strcpy(index_file, "www/index.html");
+	}
 
 	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (socket_fd < 0)
@@ -248,7 +255,7 @@ int main(int argc, char *argv[])
 	if (bind(socket_fd, &serv_addr, socket_len) < 0)
 		perrexit("Binding failed..!");
 
-	printf("============\n%s\n============\n", SERVERNAME);
+	printf("===============\n| %s |\n===============\n", SERVERNAME);
 	printf("Hosting directory : %s\n", host_path);
 	printf("PORT : %d\n\n", port);
 
@@ -276,10 +283,12 @@ int main(int argc, char *argv[])
 		}
 
 		shutdown(new_socket_fd, SHUT_RDWR);
-		printf("Content Received : %zd \n%s\n", recvd_data, msg_buff);
-		for (int i = 0; i < 50; i++)
+		for (int i = 0; i < 80; i++)
 			printf("%c", log_separator);
 		printf("\n");
+		printf("|  | Content Received : %zd |\n", recvd_data);
+		printf("-----------------------------\n\n");
+		printf("%s\n", msg_buff);
 
 		/* Clean the array of received data length */
 		memset(msg_buff, '\0', recvd_data);
