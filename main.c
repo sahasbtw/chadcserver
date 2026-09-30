@@ -29,19 +29,20 @@
 #define MAXCONN	3
 #define MAXBUFF	1024
 
+const char *current_path = ".";
+/* Longest method name should be the last of the array */
+const char *http_methods[] = {"GET","HEAD","POST"};
+const char log_separator = '='; 
+
 int port = 8000;
+int default_index = 1;
 
 /* TODO : Fix this crap */
 char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
 char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
-const char *current_path = ".";
 char host_path[128];
-
-int default_index = 1;
-/* Longest method name should be the last of the array */
-const char *http_methods[] = {"GET","HEAD","POST"};
-
-const char log_separator = '='; 
+char index_file[128];
+char index_filename[] = "index.html";
 
 /* Check if a string is a digit */
 int isint(const char *s)
@@ -63,32 +64,46 @@ void perrexit(char *dbugmsg)
 }
 
 /* Exit with more user friendly custom error message */
-void usrerrexit(int errnum, char *dbugmsg)
+void usrerrexit(char *dbugmsg)
 {
-	printf("%s\n", dbugmsg);
-	exit(errnum);				/* Exits with the same errno code */
+	fprintf(stderr, "%s\n", dbugmsg);
+	exit(EXIT_FAILURE);
 }
 
-/* Joins header str with content of a file */
-char *craftresp(char *path, char *headers)
+/* Returns content of a file to buffer */
+char *readfile(char *filename)
 {
-	size_t h_len = strlen(headers);
 	FILE *fp; 
-	fp = fopen(path, "r");
+	fp = fopen(filename, "r");
 	if (fp == NULL)
-		perrexit("Can't open file to read..!");
+		perrexit("readfile -> fopen");
 
 	fseek(fp, 0, SEEK_END);
 	long eof = ftell(fp);
 	rewind(fp);
 
-	char *buff = malloc(h_len + eof + 1);
-
-	memcpy(buff, headers, h_len);
-	fread(buff + h_len, 1, eof, fp);
-	buff[h_len + eof] = '\0';
+	char *buff = malloc(eof + 1);
+	size_t ret = fread(buff, 1, eof, fp);
 	fclose(fp);
 
+	if (ret < (size_t)eof)
+		perrexit("readfile() fread");
+
+	buff[eof] = '\0';
+	return buff;
+}
+
+/* Returns a concatenated string of headers & body to a buffer */
+char *craftresp(char *headers, char *body)
+{
+	size_t h_len = strlen(headers);
+	size_t b_len = strlen(body);
+
+	char *buff = malloc(h_len + b_len + 1);
+
+	strcpy(buff, headers);
+	strcat(buff, body);
+	buff[h_len + b_len] = '\0';
 	return buff;
 }
 
@@ -97,8 +112,7 @@ int returnmethod(char *req)
 	size_t i = 0;
 	/* Some arbitrary number; i.e 9, to just detect an unsupported method */
 	size_t method_index = 9;
-	char *longest_method = (char *)(&http_methods + 1) - 1;
-	char *method = malloc(strlen(longest_method) + 1);
+	char *method = malloc(strlen(http_methods[2]) + 1);
 
 	for (i = 0; req[i] != ' '; i++)
 		method[i] = req[i];
@@ -141,12 +155,14 @@ int fileindir(const char *dirname, const char *filename)
 
 void getresp(int fd, char *headers, char *path)
 {
-	char *resp = craftresp(path, headers); /* free this */
+	char *body = readfile(path); /* free this */
+	char *resp = craftresp(headers, body); /* free this */
 
 	if (send(fd, resp, strlen(resp), 0) < 0)
 		perrexit("FAILED: Sending GET resp to client");
 
 	free(resp); /* Freed it */
+	free(body); /* Freed it */
 }
 
 void headresp(int fd, char *headers)
@@ -164,13 +180,13 @@ void unknownresp(int fd, char *headers)
 
 void arghandling(int argc, char *argv[])
 {
-	if (argc == 1) {
-		printf("USAGE: %s -d DIR -p PORT\n", argv[--argc]);
-		exit(1);
-	} else {
+	if (argc > 1) {
 		for (int i = 1; i < argc; i++) {
 			/* Checking directory path */
-			if (strcmp(argv[i], "-d") == 0) { 
+			if (strcmp(argv[i], "-h") == 0) { 
+				printf("USAGE: %s -d DIR -p PORT\n", argv[0]);
+				exit(0);
+			} else if (strcmp(argv[i], "-d") == 0) { 
 				if (++i < argc) {
 					if (validdir(argv[i]) != 0)
 						perrexit("Invalid Directory Path");
@@ -179,17 +195,17 @@ void arghandling(int argc, char *argv[])
 						strcpy(host_path, argv[i]);
 						default_index = 0;
 					}
-				} else usrerrexit(1, "Invalid Directory Name");
+				} else usrerrexit("Invalid Directory Name");
 
 			/* Checking port if given, defaults to 8000 if not */
 			} else if (strcmp(argv[i], "-p") == 0)
 			{
 				if (++i < argc) {
 					if (isint(argv[i]) == 1)
-						usrerrexit(69, "Invalid Port Number");
+						usrerrexit("Invalid Port Number");
 					else 
 						port = atoi(argv[i]);
-				} else usrerrexit(1, "Invalid Port Number");
+				} else usrerrexit("Invalid Port Number");
 			}
 		}
 	}
@@ -198,9 +214,6 @@ void arghandling(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
-	char index_file[128];
-	char index_filename[] = "index.html";
-
 	strcpy(host_path, current_path);
 	arghandling(argc, argv);
 
@@ -236,7 +249,7 @@ int main(int argc, char *argv[])
 		perrexit("Binding failed..!");
 
 	printf("============\n%s\n============\n", SERVERNAME);
-	printf("Hosting directory : %s\n", index_file);
+	printf("Hosting directory : %s\n", host_path);
 	printf("PORT : %d\n\n", port);
 
 	while (listen(socket_fd, MAXCONN) == 0) {
