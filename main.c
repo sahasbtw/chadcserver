@@ -20,11 +20,24 @@
 #define METHOD_MAX 17
 #define HTTP_V_SIZE sizeof("HTTP/1.1")
 #define LOG_SEPRTR '-'
+#define DEFAULT_HTTP_MESSAGE \
+	"<!doctype html>\n" \
+	"<html>\n" \
+	"	<head>\n" \
+	"		<title>htttp server in c</title>\n" \
+	"	</head>\n" \
+	"	<body>\n" \
+	"		<h1 style=\"font-size: 50px;\">ChadCServer</h1>\n" \
+	"		<p><i>~ The C stands for Chad</i></p>\n" \
+	"		<hr width=100%>\n" \
+	"		<p>This web server is written in pure C..!</p>\n" \
+	"	</body>\n" \
+	"</html>\n"
 
 /* Globals */
 int port = 8000;
 char host_path[128] = ".";
-char index_file[128] = "www/index.html";
+char index_file[128];
 
 /* TODO : Fix this crap */
 char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
@@ -186,7 +199,7 @@ void getresp(int fd, char *headers)
 	if (fileindir(host_path, INDEX_HTML) == 0)
 		body = readfile(index_file); /* free this */
 	else
-		body = "<h1>Whats Goooood...!</h>\n";
+		body = DEFAULT_HTTP_MESSAGE;
 
 	char *resp = craftresp(headers, body); /* free this */
 	if (send(fd, resp, strlen(resp), 0) < 0)
@@ -282,7 +295,7 @@ int main(int argc, char *argv[])
 		memset(index_file, 0, sizeof(index_file));
 		craftpath(index_file, host_path, INDEX_HTML);
 	} else
-		printf("Using default %s landing page at www/index.html\n", SERVERNAME);
+		printf("Using default %s landing page\n", SERVERNAME);
 
 	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (socket_fd < 0)
