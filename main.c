@@ -25,10 +25,10 @@
 int port = 8000;
 char host_path[128] = ".";
 char index_file[128] = "www/index.html";
-/* TODO : Fix this crap */
-char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
-char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
 
+/* TODO : Fix this crap */
+const char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
+const char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
 const char *http_methods[] = {"GET","HEAD","POST"};  /* Longest method name should be the last */
 
 typedef struct {
