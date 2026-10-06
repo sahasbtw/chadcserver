@@ -25,23 +25,63 @@
 #include <dirent.h>
 
 #define SERVERNAME "chadcserver"
-
 #define MAXCONN	3
 #define MAXBUFF	1024
+#define INDEX_HTML "index.html"
+#define METHOD_MAX 17
+#define HTTP_V_SIZE sizeof("HTTP/1.1")
 
-/* Longest method name should be the last of the array */
-const char *http_methods[] = {"GET","HEAD","POST"};
-const char log_separator = '-'; 
-
+/* Globals */
 int port = 8000;
-
+char host_path[128] = ".";
+char index_file[128] = "www/index.html";
 /* TODO : Fix this crap */
 char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
 char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
 
-char host_path[128] = ".";
-char index_file[128];
-char index_filename[] = "index.html";
+const char *http_methods[] = {"GET","HEAD","POST"};  /* Longest method name should be the last */
+const char log_separator = '-'; 
+
+typedef struct {
+	char method[METHOD_MAX];
+	char res[MAXBUFF];
+	char http_v[HTTP_V_SIZE];
+} Response;
+
+Response parse_resp(char *req) {
+	int j = 0;
+	int req_elemnt = 0;
+	char buff[MAXBUFF] = {0};
+	Response resp;
+
+	for (int i = 0; req_elemnt < 3; i++) {
+		switch(req[i]) {
+			case ' ':
+				req_elemnt++;
+				buff[j] = '\0';
+
+				if (req_elemnt == 1)
+					strncpy(resp.method, buff, METHOD_MAX);
+				else if (req_elemnt == 2)
+					strncpy(resp.res, buff, MAXBUFF);
+
+				j = 0;
+				memset(buff, 0, strlen(buff));
+				break;
+			case '\r': case '\n':
+				req_elemnt++;
+				buff[j] = '\0';
+				strncpy(resp.http_v, buff, HTTP_V_SIZE);
+				break;
+			default:
+				buff[j] = req[i];
+				j++;
+				break;
+		}
+	}
+
+	return resp;
+}
 
 /* Perror with exit */
 void perrexit(char *dbugmsg)
@@ -78,6 +118,7 @@ char *readfile(char *filename)
 		perrexit("readfile() fread");
 
 	buff[eof] = '\0';
+
 	return buff;
 }
 
@@ -92,24 +133,21 @@ char *craftresp(char *headers, char *body)
 	strcpy(buff, headers);
 	strcat(buff, body);
 	buff[h_len + b_len] = '\0';
+
 	return buff;
 }
 
-int returnmethod(char *req)
+
+int returnmethod(char *method)
 {
 	size_t i = 0;
 	/* Some arbitrary number; i.e 9, to just detect an unsupported method */
 	size_t method_index = 9;
-	char *method = malloc(strlen(http_methods[2]) + 1);
-
-	for (i = 0; req[i] != ' '; i++)
-		method[i] = req[i];
-	method[i] = '\0';
 
 	for (i = 0; i < countof(http_methods); i++)
 		if (strcmp(method, http_methods[i]) == 0)
 			method_index = i;
-	free(method);   /* Be sure to always free it*/
+
 	return method_index;
 }
 
@@ -121,6 +159,7 @@ int isint(const char *s)
 		if (((c) >= 'a' && (c) <= 'f') || ((c) >= 'A' && (c) <= 'F'))
 			return 1;
 	}
+
 	return 0;
 }
 
@@ -229,13 +268,11 @@ int main(int argc, char *argv[])
 {
 	arghandling(argc, argv);
 
-	if (fileindir(host_path, index_filename) == 0) {
-		craftpath(index_file, host_path, index_filename);
-	} else {
-		/* If no index.html file is present, www/index.html will be serverd */
+	if (fileindir(host_path, INDEX_HTML) == 0) {
+		memset(index_file, 0, sizeof(index_file));
+		craftpath(index_file, host_path, INDEX_HTML);
+	} else
 		printf("Using default %s landing page at www/index.html\n", SERVERNAME);
-		strcpy(index_file, "www/index.html");
-	}
 
 	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (socket_fd < 0)
@@ -255,9 +292,11 @@ int main(int argc, char *argv[])
 	if (bind(socket_fd, &serv_addr, socket_len) < 0)
 		perrexit("Binding failed..!");
 
-	printf("===============\n| %s |\n===============\n", SERVERNAME);
+	printf("---------------\n| %s |\n---------------\n", SERVERNAME);
 	printf("Hosting directory : %s\n", host_path);
 	printf("PORT : %d\n\n", port);
+
+	char msg_recvd[MAXBUFF];
 
 	while (listen(socket_fd, MAXCONN) == 0) {
 		/* Setting up a new socket fd to receive and send data */
@@ -266,11 +305,11 @@ int main(int argc, char *argv[])
 			perrexit("Creating a new socket failed..!");
 
 		/* Receiving a message */ 
-		char msg_buff[MAXBUFF];
-		ssize_t recvd_data = recv(new_socket_fd, &msg_buff, sizeof(msg_buff), 0);
+		ssize_t recvd_data = recv(new_socket_fd, &msg_recvd, sizeof(msg_recvd), 0);
 
+		Response resp_parsd = parse_resp(msg_recvd);
 		/* Responding depending on the request type */
-		switch (returnmethod(msg_buff)) {
+		switch (returnmethod(resp_parsd.method)) {
 			case 0:
 				getresp(new_socket_fd, headers, index_file);
 				break;
@@ -288,10 +327,10 @@ int main(int argc, char *argv[])
 		printf("\n");
 		printf("|  | Content Received : %zd |\n", recvd_data);
 		printf("-----------------------------\n\n");
-		printf("%s\n", msg_buff);
+		printf("%s\n", msg_recvd);
 
 		/* Clean the array of received data length */
-		memset(msg_buff, '\0', recvd_data);
+		memset(msg_recvd, 0, (size_t)recvd_data);
 	}
 
 	perrexit("Listening failed..!");
