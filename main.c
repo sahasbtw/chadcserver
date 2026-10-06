@@ -27,8 +27,8 @@ char host_path[128] = ".";
 char index_file[128] = "www/index.html";
 
 /* TODO : Fix this crap */
-const char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
-const char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
+char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
+char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
 const char *http_methods[] = {"GET","HEAD","POST"};  /* Longest method name should be the last */
 
 typedef struct {
@@ -99,7 +99,7 @@ char *readfile(char *filename)
 	long eof = ftell(fp);
 	rewind(fp);
 
-	char *buff = malloc(eof + 1);
+	char *buff = malloc((size_t)eof + 1);
 	size_t ret = fread(buff, 1, eof, fp);
 	fclose(fp);
 
@@ -107,7 +107,6 @@ char *readfile(char *filename)
 		perrexit("readfile() fread");
 
 	buff[eof] = '\0';
-
 	return buff;
 }
 
@@ -180,16 +179,20 @@ int fileindir(const char *dirname, const char *filename)
 	return 1;
 }
 
-void getresp(int fd, char *headers, char *path)
+void getresp(int fd, char *headers)
 {
-	char *body = readfile(path); /* free this */
-	char *resp = craftresp(headers, body); /* free this */
+	char *body = {0};
 
+	if (fileindir(host_path, INDEX_HTML) == 0)
+		body = readfile(index_file); /* free this */
+	else
+		body = "<h1>Whats Goooood...!</h>\n";
+
+	char *resp = craftresp(headers, body); /* free this */
 	if (send(fd, resp, strlen(resp), 0) < 0)
 		perrexit("FAILED: Sending GET resp to client");
 
 	free(resp); /* Freed it */
-	free(body); /* Freed it */
 }
 
 void headresp(int fd, char *headers)
@@ -316,7 +319,7 @@ int main(int argc, char *argv[])
 		/* Responding depending on the request type */
 		switch (returnmethod(resp_parsd.method)) {
 			case 0:
-				getresp(new_socket_fd, headers, index_file);
+				getresp(new_socket_fd, headers);
 				break;
 			case 1:
 				headresp(new_socket_fd, headers);
