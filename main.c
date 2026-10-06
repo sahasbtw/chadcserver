@@ -15,7 +15,7 @@
 
 #define SERVERNAME "chadcserver"
 #define MAXCONN	3
-#define MAXBUFF	1024
+#define MAXBUFF	4096
 #define INDEX_HTML "index.html"
 #define METHOD_MAX 17
 #define HTTP_V_SIZE sizeof("HTTP/1.1")
