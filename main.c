@@ -40,7 +40,7 @@ char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
 char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
 
 const char *http_methods[] = {"GET","HEAD","POST"};  /* Longest method name should be the last */
-const char log_separator = '-'; 
+const char log_separator = '-';
 
 typedef struct {
 	char method[METHOD_MAX];
@@ -86,9 +86,9 @@ Response parse_resp(char *req) {
 /* Perror with exit */
 void perrexit(char *dbugmsg)
 {
-	int errnum = errno;			/* Making sure to get the errno right after */
+	int errnum = errno;         /* Making sure to get the errno right after */
 	perror(dbugmsg);
-	exit(errnum);				/* Exits with the same errno code */
+	exit(errnum);               /* Exits with the same errno code */
 }
 
 /* Exit with more user friendly custom error message */
@@ -234,10 +234,10 @@ void arghandling(int argc, char *argv[])
 	if (argc > 1) {
 		for (int i = 1; i < argc; i++) {
 			/* Checking directory path */
-			if (strcmp(argv[i], "-h") == 0) { 
+			if (strcmp(argv[i], "-h") == 0) {
 				printf("USAGE: %s -d DIR -p PORT\n", argv[0]);
 				exit(0);
-			} else if (strcmp(argv[i], "-d") == 0) { 
+			} else if (strcmp(argv[i], "-d") == 0) {
 				if (++i < argc) {
 					if (validdir(argv[i]) != 0)
 						perrexit("Invalid Directory Path");
@@ -325,7 +325,7 @@ int main(int argc, char *argv[])
 		for (int i = 0; i < 80; i++)
 			printf("%c", log_separator);
 		printf("\n");
-		printf("|  | Content Received : %zd |\n", recvd_data);
+		printf("|  | Content Received : %3zd |\n", recvd_data);
 		printf("-----------------------------\n\n");
 		printf("%s\n", msg_recvd);
 
