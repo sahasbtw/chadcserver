@@ -1,16 +1,5 @@
 #define _GNU_SOURCE		/* Needs to be the first line */
 
-/* 
- * Resources:
- *
- * Source - https://stackoverflow.com/a/37241328 
- * Posted by Vlad from Moscow, modified by community. See post 'Timeline' for change history
- * Retrieved 2026-09-20, License - CC BY-SA 3.0 
- *
- * https://pythonexamples.org/c/how-to-check-if-string-ends-with-specific-suffix
- *
- */
-
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -30,6 +19,7 @@
 #define INDEX_HTML "index.html"
 #define METHOD_MAX 17
 #define HTTP_V_SIZE sizeof("HTTP/1.1")
+#define LOG_SEPRTR '-'
 
 /* Globals */
 int port = 8000;
@@ -40,7 +30,6 @@ char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
 char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
 
 const char *http_methods[] = {"GET","HEAD","POST"};  /* Longest method name should be the last */
-const char log_separator = '-';
 
 typedef struct {
 	char method[METHOD_MAX];
@@ -264,6 +253,24 @@ void arghandling(int argc, char *argv[])
 
 }
 
+void print_header()
+{
+	printf("---------------\n| %s |\n---------------\n", SERVERNAME);
+	printf("Hosting directory : %s\n", host_path);
+	printf("PORT : %d\n\n", port);
+}
+
+void print_logs(const size_t content_size, char *content, char log_separator)
+{
+	for (int i = 0; i < 80; i++)
+		printf("%c", log_separator);
+	printf("\n");
+	printf("|  | Content Received : %3zd |\n", content_size);
+	printf("-----------------------------\n\n");
+	printf("%s\n", content);
+}
+
+
 int main(int argc, char *argv[])
 {
 	arghandling(argc, argv);
@@ -292,9 +299,7 @@ int main(int argc, char *argv[])
 	if (bind(socket_fd, &serv_addr, socket_len) < 0)
 		perrexit("Binding failed..!");
 
-	printf("---------------\n| %s |\n---------------\n", SERVERNAME);
-	printf("Hosting directory : %s\n", host_path);
-	printf("PORT : %d\n\n", port);
+	print_header();
 
 	char msg_recvd[MAXBUFF];
 
@@ -322,12 +327,7 @@ int main(int argc, char *argv[])
 		}
 
 		shutdown(new_socket_fd, SHUT_RDWR);
-		for (int i = 0; i < 80; i++)
-			printf("%c", log_separator);
-		printf("\n");
-		printf("|  | Content Received : %3zd |\n", recvd_data);
-		printf("-----------------------------\n\n");
-		printf("%s\n", msg_recvd);
+		print_logs(recvd_data, msg_recvd, LOG_SEPRTR);
 
 		/* Clean the array of received data length */
 		memset(msg_recvd, 0, (size_t)recvd_data);
