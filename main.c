@@ -14,74 +14,74 @@
 #include <dirent.h>
 
 #define SERVERNAME "chadcserver"
-#define MAXCONN	3
-#define MAXBUFF	4096
+#define MAXBUFF	   4096
+#define MAXCONN	   3
+#define MAX_METHOD 5
+#define MAX_HEADER 24
+#define MAX_STRING 256
+#define MED_STRING 128
 #define INDEX_HTML "index.html"
-#define METHOD_MAX 17
-#define HTTP_V_SIZE sizeof("HTTP/1.1")
+#define HTTP_V_SIZE 9
 #define LOG_SEPRTR '-'
-#define DEFAULT_HTTP_MESSAGE \
-	"<!doctype html>\n" \
-	"<html>\n" \
-	"	<head>\n" \
-	"		<title>htttp server in c</title>\n" \
-	"	</head>\n" \
-	"	<body>\n" \
-	"		<h1 style=\"font-size: 50px;\">ChadCServer</h1>\n" \
-	"		<p><i>~ The C stands for Chad</i></p>\n" \
-	"		<hr width=100%>\n" \
-	"		<p>This web server is written in pure C..!</p>\n" \
-	"	</body>\n" \
-	"</html>\n"
 
 /* Globals */
 int port = 8000;
-char host_path[128] = ".";
-char index_file[128];
+char host_path[MED_STRING] = ".";
+char index_file[MED_STRING];
 
 /* TODO : Fix this crap */
 char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
 char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
 const char *http_methods[] = {"GET","HEAD","POST"};  /* Longest method name should be the last */
 
+char default_http_msg[] = \
+	"<!doctype html>\n" \
+	"<html>\n" \
+	"<head>\n" \
+	"<title>htttp server in c</title>\n" \
+	"</head>\n" \
+	"<body>\n" \
+	"<h1 style=\"font-size: 50px;\">ChadCServer</h1>\n" \
+	"<p><i>~ C99, the standard for Chads</i></p>\n" \
+	"<hr width=100%>\n" \
+	"<p>This web server is written in C..!</p>\n" \
+	"<p>Yout User Agent: <strong>%s<strong></p>\n" \
+	"</body>\n" \
+	"</html>\n";
+
 typedef struct {
-	char method[METHOD_MAX];
-	char res[MAXBUFF];
+	char header[MED_STRING];
+	char value[MAX_STRING];
+} Header;
+
+typedef struct {
+	char method[MAX_METHOD];
+	char res[MED_STRING];
 	char http_v[HTTP_V_SIZE];
+
+	Header headers[MAX_HEADER];
 } Response;
 
 Response parse_resp(char *req) {
-	int j = 0;
-	int req_elemnt = 0;
-	char buff[MAXBUFF] = {0};
 	Response resp;
+	char *tokens[] = {resp.method, resp.res, resp.http_v};
+	int marked = 0;
+	int del = 0;
+//	size_t t_size = 0;
 
-	for (int i = 0; req_elemnt < 3; i++) {
-		switch(req[i]) {
-			case ' ':
-				req_elemnt++;
-				buff[j] = '\0';
+	for (int i = 0; req[i] != '\n';i++) {
+		if (req[i] == ' ' || req[i] == '\r') {
+			size_t rt_size = i - marked;
+//			t_size = countof(*tokens[del]);
+//
+//			if (rt_size > t_size) {rt_size = t_size;};
 
-				if (req_elemnt == 1)
-					strncpy(resp.method, buff, METHOD_MAX);
-				else if (req_elemnt == 2)
-					strncpy(resp.res, buff, MAXBUFF);
-
-				j = 0;
-				memset(buff, 0, strlen(buff));
-				break;
-			case '\r': case '\n':
-				req_elemnt++;
-				buff[j] = '\0';
-				strncpy(resp.http_v, buff, HTTP_V_SIZE);
-				break;
-			default:
-				buff[j] = req[i];
-				j++;
-				break;
+			strncpy(tokens[del], req + marked, rt_size);
+			tokens[del][rt_size] = '\0';
+			++del;
+			marked = i+1;
 		}
 	}
-
 	return resp;
 }
 
@@ -199,7 +199,7 @@ void getresp(int fd, char *headers)
 	if (fileindir(host_path, INDEX_HTML) == 0)
 		body = readfile(index_file); /* free this */
 	else
-		body = DEFAULT_HTTP_MESSAGE;
+		body = default_http_msg;
 
 	char *resp = craftresp(headers, body); /* free this */
 	if (send(fd, resp, strlen(resp), 0) < 0)
@@ -329,6 +329,7 @@ int main(int argc, char *argv[])
 		ssize_t recvd_data = recv(new_socket_fd, &msg_recvd, sizeof(msg_recvd), 0);
 
 		Response resp_parsd = parse_resp(msg_recvd);
+		printf("METHOD: |%s|\nRESOURCE: |%s|\nVERSION: |%s|\n", resp_parsd.method, resp_parsd.res, resp_parsd.http_v);
 		/* Responding depending on the request type */
 		switch (returnmethod(resp_parsd.method)) {
 			case 0:
