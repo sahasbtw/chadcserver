@@ -9,7 +9,6 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <stdcountof.h>
 #include <sys/types.h>
 #include <dirent.h>
 
@@ -17,24 +16,24 @@
 #define MAXBUFF	   4096
 #define MAXCONN	   3
 #define MAX_METHOD 5
-#define MAX_HEADER 24
+#define MAX_HEADERS 24
 #define MAX_STRING 256
 #define MED_STRING 128
 #define INDEX_HTML "index.html"
 #define HTTP_V_SIZE 9
 #define LOG_SEPRTR '-'
+#define NO_METHODS_SUPPORTED 3
+
+const char *http_methods[] = {"GET","HEAD","POST"};  /* Longest method name should be the last */
 
 /* Globals */
 int port = 8000;
 char host_path[MED_STRING] = ".";
 char index_file[MED_STRING];
-
 /* TODO : Fix this crap */
 char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
 char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
-const char *http_methods[] = {"GET","HEAD","POST"};  /* Longest method name should be the last */
-
-char default_http_msg[] = \
+char default_http_msg[4096] = \
 	"<!doctype html>\n" \
 	"<html>\n" \
 	"<head>\n" \
@@ -59,29 +58,60 @@ typedef struct {
 	char res[MED_STRING];
 	char http_v[HTTP_V_SIZE];
 
-	Header headers[MAX_HEADER];
+	Header headers[MAX_HEADERS];
+	int nh;
 } Response;
 
 Response parse_resp(char *req) {
 	Response resp;
-	char *tokens[] = {resp.method, resp.res, resp.http_v};
-	int marked = 0;
-	int del = 0;
-//	size_t t_size = 0;
+	char *status_params[] = {resp.method, resp.res, resp.http_v};
+	size_t sizes[] = {MAX_METHOD, MED_STRING, HTTP_V_SIZE};
+	int d_index = 0; /* delimeter index */
+	int t_index = 0; /* token index */
+	size_t t_size;
+	int i = 0;
+	int n_headers = 0;
+	size_t rt_size;
 
-	for (int i = 0; req[i] != '\n';i++) {
+	for (i; req[i] != '\n';i++) {
 		if (req[i] == ' ' || req[i] == '\r') {
-			size_t rt_size = i - marked;
-//			t_size = countof(*tokens[del]);
-//
-//			if (rt_size > t_size) {rt_size = t_size;};
+			rt_size = i - d_index;
+			t_size = sizes[t_index];
+			if (rt_size > t_size)
+				rt_size = t_size;
 
-			strncpy(tokens[del], req + marked, rt_size);
-			tokens[del][rt_size] = '\0';
-			++del;
-			marked = i+1;
+			strncpy(status_params[t_index], req + d_index, rt_size);
+			status_params[t_index][rt_size] = '\0';
+			++t_index;
+			d_index = i+1;
 		}
 	}
+
+	++i; /* Skipping the \n */
+	d_index = i;
+	t_index = 0;
+	int eoh = 0;
+	for (i; eoh == 0;i++) {
+		if (req[i] == ':') {
+			rt_size = i - d_index; /* -1; We don't want semicolons */
+			strncpy(resp.headers[n_headers].header, req + d_index, rt_size);
+			resp.headers[n_headers].header[rt_size] = '\0';
+
+			i += 2;
+			d_index = i;
+			for (i; req[i] != '\r';i++);
+			rt_size = i - d_index;
+			strncpy(resp.headers[n_headers].value, req + d_index, MAX_STRING);
+			resp.headers[n_headers].value[rt_size] = '\0';
+
+			i += 2;
+			d_index = i;
+			if (req[i] == '\r' && req[i+1] == '\n') eoh = 1;
+			n_headers++;
+		}
+	}
+
+	resp.nh = n_headers + 1;
 	return resp;
 }
 
@@ -145,7 +175,7 @@ int returnmethod(char *method)
 	/* Some arbitrary number; i.e 9, to just detect an unsupported method */
 	size_t method_index = 9;
 
-	for (i = 0; i < countof(http_methods); i++)
+	for (i = 0; i < NO_METHODS_SUPPORTED; i++)
 		if (strcmp(method, http_methods[i]) == 0)
 			method_index = i;
 
@@ -192,14 +222,14 @@ int fileindir(const char *dirname, const char *filename)
 	return 1;
 }
 
-void getresp(int fd, char *headers)
+void getresp(int fd, char *headers, char http_content[])
 {
 	char *body = {0};
 
 	if (fileindir(host_path, INDEX_HTML) == 0)
 		body = readfile(index_file); /* free this */
 	else
-		body = default_http_msg;
+		body = http_content;
 
 	char *resp = craftresp(headers, body); /* free this */
 	if (send(fd, resp, strlen(resp), 0) < 0)
@@ -329,11 +359,31 @@ int main(int argc, char *argv[])
 		ssize_t recvd_data = recv(new_socket_fd, &msg_recvd, sizeof(msg_recvd), 0);
 
 		Response resp_parsd = parse_resp(msg_recvd);
-		printf("METHOD: |%s|\nRESOURCE: |%s|\nVERSION: |%s|\n", resp_parsd.method, resp_parsd.res, resp_parsd.http_v);
+
+		printf("METHOD:   %s\nRESOURCE: %s\nVERSION:  %s\n", resp_parsd.method, resp_parsd.res, resp_parsd.http_v);
+		for (int i = 0; i < 4; i++)
+			printf("[%d] %s = %s\n", i+1, resp_parsd.headers[i].header, resp_parsd.headers[i].value);
+		int ua_header_no = 0;
+		for (int i = 0; i < resp_parsd.nh; i++) {
+			char *user_agent_header_no = strstr(resp_parsd.headers[i].header, "User-Agent");
+			if (user_agent_header_no != NULL) {
+				ua_header_no = i;
+				break;
+			}
+		}
+		char *subs_occur = strstr(default_http_msg, "\%s");
+		char custom_http[4096];
+		if (subs_occur != NULL) {
+			int first_half_len = subs_occur - default_http_msg;
+			strncpy(custom_http, default_http_msg, first_half_len);
+			strcat(custom_http, resp_parsd.headers[ua_header_no].value);
+			strcat(custom_http, subs_occur + 2);
+		} else 
+			strcpy(custom_http, default_http_msg);
 		/* Responding depending on the request type */
 		switch (returnmethod(resp_parsd.method)) {
 			case 0:
-				getresp(new_socket_fd, headers);
+				getresp(new_socket_fd, headers, custom_http);
 				break;
 			case 1:
 				headresp(new_socket_fd, headers);
@@ -348,6 +398,7 @@ int main(int argc, char *argv[])
 
 		/* Clean the array of received data length */
 		memset(msg_recvd, 0, (size_t)recvd_data);
+		memset(custom_http, 0, 4096);
 	}
 
 	perrexit("Listening failed..!");
