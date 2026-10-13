@@ -43,8 +43,8 @@ char default_http_msg[4096] = \
 	"<h1 style=\"font-size: 50px;\">ChadCServer</h1>\n" \
 	"<p><i>~ C99, the standard for Chads</i></p>\n" \
 	"<hr width=100%>\n" \
-	"<p>This web server is written in C..!</p>\n" \
-	"<p>Your User Agent: <strong>%s<strong></p>\n" \
+	"<p>This web server is written in C ..!</p>\n" \
+	"<p>Your User-Agent: <strong>%s<strong></p>\n" \
 	"</body>\n" \
 	"</html>\n";
 
