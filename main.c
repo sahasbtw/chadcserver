@@ -13,15 +13,15 @@
 #include <dirent.h>
 
 #define SERVERNAME "chadcserver"
-#define MAXBUFF	   4096
-#define MAXCONN	   3
-#define MAX_METHOD 5
+#define MAXBUFF	    4096
+#define MAXCONN	    3
+#define MAX_METHOD  5
 #define MAX_HEADERS 24
-#define MAX_STRING 256
-#define MED_STRING 128
+#define MAX_STRING  256
+#define MED_STRING  128
 #define INDEX_HTML "index.html"
 #define HTTP_V_SIZE 9
-#define LOG_SEPRTR '-'
+#define LOG_SEPRTR  '-'
 #define NO_METHODS_SUPPORTED 3
 
 const char *http_methods[] = {"GET","HEAD","POST"};  /* Longest method name should be the last */
@@ -33,7 +33,7 @@ char index_file[MED_STRING];
 /* TODO : Fix this crap */
 char *headers = "HTTP/1.1 200 OK\r\nServer: chadcserver\r\n\n";
 char *method_not_allowed = "HTTP/1.1 405 METHOD NOT ALLOWED\r\nServer: chadcserver\r\n\n";
-char default_http_msg[4096] = \
+char *default_200_page = \
 	"<!doctype html>\n" \
 	"<html>\n" \
 	"<head>\n" \
@@ -47,6 +47,22 @@ char default_http_msg[4096] = \
 	"<p>Your User-Agent: <strong>%s<strong></p>\n" \
 	"</body>\n" \
 	"</html>\n";
+
+char *headers_404 = "HTTP/1.1 404 NOT FOUND\r\nServer: chadcserver\r\n\n";
+char *default_404_page = \
+	"<!doctype html>\n" \
+	"<html>\n" \
+	"<head>\n" \
+	"<title>htttp server in c</title>\n" \
+	"</head>\n" \
+	"<body>\n" \
+	"<h1 style=\"font-size: 50px;\">ChadCServer</h1>\n" \
+	"<p><i>~ C99, the standard for Chads</i></p>\n" \
+	"<hr width=100%>\n" \
+	"<h1 style=\"font-size: 150px;text-align: center;\">404</h1>\n" \
+	"</body>\n" \
+	"</html>\n";
+
 
 typedef struct {
 	char header[MED_STRING];
@@ -73,7 +89,7 @@ Response parse_resp(char *req) {
 	int n_headers = 0;
 	size_t rt_size;
 
-	for (i; req[i] != '\n';i++) {
+	for (; req[i] != '\n';i++) {
 		if (req[i] == ' ' || req[i] == '\r') {
 			rt_size = i - d_index;
 			t_size = sizes[t_index];
@@ -82,7 +98,7 @@ Response parse_resp(char *req) {
 
 			strncpy(status_params[t_index], req + d_index, rt_size);
 			status_params[t_index][rt_size] = '\0';
-			++t_index;
+			t_index++;
 			d_index = i+1;
 		}
 	}
@@ -91,7 +107,7 @@ Response parse_resp(char *req) {
 	d_index = i;
 	t_index = 0;
 	int eoh = 0;
-	for (i; eoh == 0;i++) {
+	for (; eoh == 0;i++) {
 		if (req[i] == ':') {
 			rt_size = i - d_index; /* -1; We don't want semicolons */
 			strncpy(resp.headers[n_headers].header, req + d_index, rt_size);
@@ -99,7 +115,7 @@ Response parse_resp(char *req) {
 
 			i += 2;
 			d_index = i;
-			for (i; req[i] != '\r';i++);
+			for (; req[i] != '\r';i++);
 			rt_size = i - d_index;
 			strncpy(resp.headers[n_headers].value, req + d_index, MAX_STRING);
 			resp.headers[n_headers].value[rt_size] = '\0';
@@ -154,12 +170,13 @@ char *readfile(char *filename)
 }
 
 /* Returns a concatenated string of headers & body to a buffer */
-char *craftresp(char *headers, char *body)
+char *craftresp(const char *headers, const char *body)
 {
 	size_t h_len = strlen(headers);
 	size_t b_len = strlen(body);
 
 	char *buff = malloc(h_len + b_len + 1);
+	if (buff == NULL) return NULL;
 
 	strcpy(buff, headers);
 	strcat(buff, body);
@@ -169,7 +186,7 @@ char *craftresp(char *headers, char *body)
 }
 
 
-int returnmethod(char *method)
+int return_method_index(char *method)
 {
 	size_t i = 0;
 	/* Some arbitrary number; i.e 9, to just detect an unsupported method */
@@ -222,9 +239,9 @@ int fileindir(const char *dirname, const char *filename)
 	return 1;
 }
 
-void getresp(int fd, char *headers, char http_content[])
+void getresp(int fd, char *headers, char *http_content)
 {
-	char *body = {0};
+	char *body;
 
 	if (fileindir(host_path, INDEX_HTML) == 0)
 		body = readfile(index_file); /* free this */
@@ -232,10 +249,13 @@ void getresp(int fd, char *headers, char http_content[])
 		body = http_content;
 
 	char *resp = craftresp(headers, body); /* free this */
+	if (resp == NULL)
+		perrexit("FAILED: Allocating HTTP response");
+
 	if (send(fd, resp, strlen(resp), 0) < 0)
 		perrexit("FAILED: Sending GET resp to client");
 
-	free(resp); /* Freed it */
+	free(resp);
 }
 
 void headresp(int fd, char *headers)
@@ -299,14 +319,14 @@ void arghandling(int argc, char *argv[])
 
 }
 
-void print_header()
+void pheaders()
 {
 	printf("---------------\n| %s |\n---------------\n", SERVERNAME);
 	printf("Hosting directory : %s\n", host_path);
 	printf("PORT : %d\n\n", port);
 }
 
-void print_logs(const size_t content_size, char *content, char log_separator)
+void plogs(const size_t content_size, char *content, char log_separator)
 {
 	for (int i = 0; i < 80; i++)
 		printf("%c", log_separator);
@@ -316,6 +336,32 @@ void print_logs(const size_t content_size, char *content, char log_separator)
 	printf("%s\n", content);
 }
 
+/* Takes a list of Header structs & edits the html page if user-agent header is available */
+void custompage(Header headers[], int nh, char **http_page, char *fallback_page)
+{
+	*http_page = fallback_page;
+	for (int i = 0; i < nh; i++) {
+		char *ua_header = strstr(headers[i].header, "User-Agent");
+		if (ua_header != NULL) {
+			char *subs_occur = strstr(fallback_page, "\%s");
+			if (subs_occur != NULL) {
+				int first_half_len = subs_occur - fallback_page;
+				size_t needed = first_half_len + strlen(headers[i].value)
+				              + strlen(subs_occur + 2) + 1;
+				char *buff = malloc(needed);
+				if (buff == NULL)
+				    return;
+				strncpy(buff, fallback_page, first_half_len);
+				buff[first_half_len] = '\0';
+				strcat(buff, headers[i].value);
+				strcat(buff, subs_occur + 2);
+
+				*http_page = buff;
+			}
+			break;
+		}	
+	}
+}
 
 int main(int argc, char *argv[])
 {
@@ -345,7 +391,7 @@ int main(int argc, char *argv[])
 	if (bind(socket_fd, &serv_addr, socket_len) < 0)
 		perrexit("Binding failed..!");
 
-	print_header();
+	pheaders();
 
 	char msg_recvd[MAXBUFF];
 
@@ -363,25 +409,16 @@ int main(int argc, char *argv[])
 		printf("METHOD:   %s\nRESOURCE: %s\nVERSION:  %s\n", resp_parsd.method, resp_parsd.res, resp_parsd.http_v);
 		for (int i = 0; i < 4; i++)
 			printf("[%d] %s = %s\n", i+1, resp_parsd.headers[i].header, resp_parsd.headers[i].value);
-		int ua_header_no = 0;
-		for (int i = 0; i < resp_parsd.nh; i++) {
-			char *user_agent_header_no = strstr(resp_parsd.headers[i].header, "User-Agent");
-			if (user_agent_header_no != NULL) {
-				ua_header_no = i;
-				break;
-			}
-		}
-		char *subs_occur = strstr(default_http_msg, "\%s");
-		char custom_http[4096];
-		if (subs_occur != NULL) {
-			int first_half_len = subs_occur - default_http_msg;
-			strncpy(custom_http, default_http_msg, first_half_len);
-			strcat(custom_http, resp_parsd.headers[ua_header_no].value);
-			strcat(custom_http, subs_occur + 2);
-		} else 
-			strcpy(custom_http, default_http_msg);
+
+		char *custom_http;
+		if (strcmp(resp_parsd.res, "/") == 0)
+			custompage(resp_parsd.headers, resp_parsd.nh, &custom_http, default_200_page);
+		else
+			custompage(resp_parsd.headers, resp_parsd.nh, &custom_http, default_404_page);
+
+
 		/* Responding depending on the request type */
-		switch (returnmethod(resp_parsd.method)) {
+		switch (return_method_index(resp_parsd.method)) {
 			case 0:
 				getresp(new_socket_fd, headers, custom_http);
 				break;
@@ -394,11 +431,11 @@ int main(int argc, char *argv[])
 		}
 
 		shutdown(new_socket_fd, SHUT_RDWR);
-		print_logs(recvd_data, msg_recvd, LOG_SEPRTR);
+		plogs(recvd_data, msg_recvd, LOG_SEPRTR);
 
 		/* Clean the array of received data length */
 		memset(msg_recvd, 0, (size_t)recvd_data);
-		memset(custom_http, 0, 4096);
+//		memset(custom_http, 0, strlen(custom_http));
 	}
 
 	perrexit("Listening failed..!");
