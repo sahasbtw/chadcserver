@@ -9,6 +9,6 @@ Still in very early stages as the server can only serve an `index.html` file.
 
 - [X] Implement argument parsing to choose a custom path and a port to serve.
     - [ ] Make Argument Parsing better.
-- [ ] Parse requests and respond with client's `User-Agent`.
+- [X] Parse requests and respond with client's `User-Agent`.
 - [ ] Implement host based routing.
-- [ ] Serve content of current directory if directory is not given.
+- [X] Serve content of current directory if directory is not given.
