@@ -44,7 +44,10 @@ char *default_200_page = \
 	"<p><i>~ C99, the standard for Chads</i></p>\n" \
 	"<hr width=100%>\n" \
 	"<p>This web server is written in C ..!</p>\n" \
-	"<p>Your User-Agent: <strong>%s<strong></p>\n" \
+	"<p>Your User-Agent: <strong>{user-agent}</strong></p>\n" \
+	"<ul>\n"\
+	"{files}\n"\
+	"</ul>"\
 	"</body>\n" \
 	"</html>\n";
 
@@ -337,29 +340,81 @@ void plogs(const size_t content_size, char *content, char log_separator)
 }
 
 /* Takes a list of Header structs & edits the html page if user-agent header is available */
-void custompage(Header headers[], int nh, char **http_page, char *fallback_page)
+void embeduseragent(Header headers[], int nh, char **http_page, char *fallback_page)
 {
 	*http_page = fallback_page;
 	for (int i = 0; i < nh; i++) {
 		char *ua_header = strstr(headers[i].header, "User-Agent");
 		if (ua_header != NULL) {
-			char *subs_occur = strstr(fallback_page, "\%s");
+			char *user_agent = "{user-agent}";
+			char *subs_occur = strstr(fallback_page, user_agent);
 			if (subs_occur != NULL) {
 				int first_half_len = subs_occur - fallback_page;
 				size_t needed = first_half_len + strlen(headers[i].value)
-				              + strlen(subs_occur + 2) + 1;
+				              + strlen(subs_occur) + 1;
 				char *buff = malloc(needed);
 				if (buff == NULL)
 				    return;
 				strncpy(buff, fallback_page, first_half_len);
 				buff[first_half_len] = '\0';
 				strcat(buff, headers[i].value);
-				strcat(buff, subs_occur + 2);
+				strcat(buff, subs_occur + strlen(user_agent));
 
 				*http_page = buff;
 			}
 			break;
 		}	
+	}
+}
+
+void embedfiles(char **http_page, char *fallback_page, char *dir)
+{
+	*http_page = fallback_page;
+	char *files = "{files}";
+	char *subs_occur = strstr(fallback_page, files);
+
+	if (subs_occur != NULL) {
+		size_t file_list_size = 1024 * 3;
+		char *file_list = malloc(file_list_size);
+		file_list[0] = '\0';
+		char *list_pre = "<li>";
+		char *list_post = "</li>\n";
+		size_t needed_item_size = strlen(list_pre) + strlen(list_post);
+
+		DIR *dirp = opendir(dir);
+		if (dirp == NULL) {
+			perror("couldnt opendir embedfiles");
+		} else {
+			struct dirent *de;
+
+			while ((de = readdir(dirp)) != NULL) {
+				size_t line_size = needed_item_size + de->d_reclen;
+				size_t rem_size = strlen(file_list) - file_list_size;
+				if (rem_size <= 0) break;
+				if (line_size < rem_size) {
+					strcat(file_list, list_pre);
+					strcat(file_list, de->d_name);
+					strcat(file_list, list_post);
+				}else continue;
+			}
+			int first_half_len = subs_occur - fallback_page;
+			size_t needed = first_half_len + strlen(file_list)
+				+ strlen(subs_occur + strlen(files)) + 1;
+
+			char *buff = malloc(needed);
+			if (buff == NULL)
+				return;
+
+			strncpy(buff, fallback_page, first_half_len);
+			buff[first_half_len] = '\0';
+			strcat(buff, file_list);
+			strcat(buff, subs_occur + strlen(files));
+
+			free(file_list);
+			*http_page = buff;
+
+		}
+
 	}
 }
 
@@ -412,9 +467,9 @@ int main(int argc, char *argv[])
 
 		char *custom_http;
 		if (strcmp(resp_parsd.res, "/") == 0)
-			custompage(resp_parsd.headers, resp_parsd.nh, &custom_http, default_200_page);
+			embedfiles(&custom_http, default_200_page, host_path);
 		else
-			custompage(resp_parsd.headers, resp_parsd.nh, &custom_http, default_404_page);
+			embeduseragent(resp_parsd.headers, resp_parsd.nh, &custom_http, default_404_page);
 
 
 		/* Responding depending on the request type */
