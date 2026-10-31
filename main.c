@@ -66,7 +66,6 @@ char *default_404_page = \
 	"</body>\n" \
 	"</html>\n";
 
-
 typedef struct {
 	char header[MED_STRING];
 	char value[MAX_STRING];
@@ -340,82 +339,85 @@ void plogs(const size_t content_size, char *content, char log_separator)
 }
 
 /* Takes a list of Header structs & edits the html page if user-agent header is available */
-void embeduseragent(Header headers[], int nh, char **http_page, char *fallback_page)
+char *return_user_agent(Header headers[], int nh)
 {
-	*http_page = fallback_page;
 	for (int i = 0; i < nh; i++) {
-		char *ua_header = strstr(headers[i].header, "User-Agent");
-		if (ua_header != NULL) {
-			char *user_agent = "{user-agent}";
-			char *subs_occur = strstr(fallback_page, user_agent);
-			if (subs_occur != NULL) {
-				int first_half_len = subs_occur - fallback_page;
-				size_t needed = first_half_len + strlen(headers[i].value)
-				              + strlen(subs_occur) + 1;
-				char *buff = malloc(needed);
-				if (buff == NULL)
-				    return;
-				strncpy(buff, fallback_page, first_half_len);
-				buff[first_half_len] = '\0';
-				strcat(buff, headers[i].value);
-				strcat(buff, subs_occur + strlen(user_agent));
-
-				*http_page = buff;
-			}
-			break;
-		}	
+		char *s = strstr(headers[i].header, "User-Agent");
+		if (s != NULL)
+			return headers[i].value;
 	}
+	return "No User-Agent Found..!";
 }
 
-void embedfiles(char **http_page, char *fallback_page, char *dir)
+char *return_dir_list(char *dir)
 {
-	*http_page = fallback_page;
-	char *files = "{files}";
-	char *subs_occur = strstr(fallback_page, files);
+	size_t file_list_size = 1024 * 3;
+	char *file_list = malloc(file_list_size);
+	file_list[0] = '\0';
+	char *list_pre = "<li><a href=\"";
+	char *list_close_a_tag = "\">";
+	char *list_post = "</li>\n";
+	size_t needed_item_size = strlen(list_pre) + strlen(list_close_a_tag)
+		+ strlen(list_post);
+	DIR *dirp = opendir(dir);
+	if (dirp == NULL) {
+		strcat(file_list, "couldnt opendir embedfiles");
+	} else {
+		struct dirent *de;
 
-	if (subs_occur != NULL) {
-		size_t file_list_size = 1024 * 3;
-		char *file_list = malloc(file_list_size);
-		file_list[0] = '\0';
-		char *list_pre = "<li>";
-		char *list_post = "</li>\n";
-		size_t needed_item_size = strlen(list_pre) + strlen(list_post);
-
-		DIR *dirp = opendir(dir);
-		if (dirp == NULL) {
-			perror("couldnt opendir embedfiles");
-		} else {
-			struct dirent *de;
-
-			while ((de = readdir(dirp)) != NULL) {
-				size_t line_size = needed_item_size + de->d_reclen;
-				size_t rem_size = strlen(file_list) - file_list_size;
-				if (rem_size <= 0) break;
-				if (line_size < rem_size) {
-					strcat(file_list, list_pre);
-					strcat(file_list, de->d_name);
-					strcat(file_list, list_post);
-				}else continue;
-			}
-			int first_half_len = subs_occur - fallback_page;
-			size_t needed = first_half_len + strlen(file_list)
-				+ strlen(subs_occur + strlen(files)) + 1;
-
-			char *buff = malloc(needed);
-			if (buff == NULL)
-				return;
-
-			strncpy(buff, fallback_page, first_half_len);
-			buff[first_half_len] = '\0';
-			strcat(buff, file_list);
-			strcat(buff, subs_occur + strlen(files));
-
-			free(file_list);
-			*http_page = buff;
-
+		while ((de = readdir(dirp)) != NULL) {
+			size_t line_size = needed_item_size + de->d_reclen;
+			size_t rem_size  = file_list_size - strlen(file_list);
+			if (rem_size <= 0) break;
+			if (line_size < rem_size) {
+				strcat(file_list, list_pre);
+				strcat(file_list, de->d_name);
+				strcat(file_list, list_close_a_tag);
+				strcat(file_list, de->d_name);
+				strcat(file_list, list_post);
+			}else continue;
 		}
-
 	}
+	return file_list;
+}
+
+char *str_interpolation(char *p, Header headers[], int nh, char *dir) {
+	char *user_agent = return_user_agent(headers, nh);
+	char *dir_listing = return_dir_list(dir);
+
+	char *replacements[] = {user_agent, dir_listing};
+	char *subs[] = {"{user-agent}", "{files}"};
+
+	size_t subs_s[] = {12, 7};
+
+	char *s = malloc(MAXBUFF);
+	size_t len = 0;
+
+	while (*p && len < MAXBUFF - 1) {
+		int found = 0;
+		for (int i = 0; i < 2; i++) {
+			if (strncmp(p, subs[i], subs_s[i]) == 0) {
+				size_t rlen = strlen(replacements[i]);
+
+				if (rlen > MAXBUFF - 1 - len) {
+					free(s);
+					return NULL;
+				}
+
+				memcpy(s + len, replacements[i], rlen);
+				len += rlen;
+				p += subs_s[i];
+
+				found = 1;
+				break;
+			}
+		}
+		if (!found)
+			s[len++] = *p++;
+	}
+	s[len] = '\0';
+
+	return s;
 }
 
 int main(int argc, char *argv[])
@@ -461,16 +463,12 @@ int main(int argc, char *argv[])
 
 		Response resp_parsd = parse_resp(msg_recvd);
 
-		printf("METHOD:   %s\nRESOURCE: %s\nVERSION:  %s\n", resp_parsd.method, resp_parsd.res, resp_parsd.http_v);
-		for (int i = 0; i < 4; i++)
-			printf("[%d] %s = %s\n", i+1, resp_parsd.headers[i].header, resp_parsd.headers[i].value);
-
 		char *custom_http;
-		if (strcmp(resp_parsd.res, "/") == 0)
-			embedfiles(&custom_http, default_200_page, host_path);
-		else
-			embeduseragent(resp_parsd.headers, resp_parsd.nh, &custom_http, default_404_page);
 
+		if (strcmp(resp_parsd.res, "/") == 0)
+			custom_http = str_interpolation(default_200_page, resp_parsd.headers, resp_parsd.nh, host_path);
+		else
+			custom_http = str_interpolation(default_404_page, resp_parsd.headers, resp_parsd.nh, host_path);
 
 		/* Responding depending on the request type */
 		switch (return_method_index(resp_parsd.method)) {
@@ -488,9 +486,7 @@ int main(int argc, char *argv[])
 		shutdown(new_socket_fd, SHUT_RDWR);
 		plogs(recvd_data, msg_recvd, LOG_SEPRTR);
 
-		/* Clean the array of received data length */
-		memset(msg_recvd, 0, (size_t)recvd_data);
-//		memset(custom_http, 0, strlen(custom_http));
+		msg_recvd[0] = '\0';
 	}
 
 	perrexit("Listening failed..!");
